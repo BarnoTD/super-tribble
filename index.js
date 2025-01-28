@@ -74,5 +74,7 @@ app.get('/weather', async (req, res) => {
 });
 // Start the server
 app.listen(port, () => {
+  console.log('Redis Host:', process.env.REDIS_HOST);
+console.log('RabbitMQ Host:', process.env.RABBITMQ_HOST);
   console.log(`Weather service listening on port ${port}`);
 });
