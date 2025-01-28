@@ -1,12 +1,15 @@
+const { saveWeatherData } = require('./db');
 const { connect, sendAlert } = require("./rabbitmq");
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
 connect();
 
+app.use(cors());
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
@@ -33,7 +36,15 @@ app.get("/weather", async (req, res) => {
       humidity: response.data.main.humidity,
       description: response.data.weather[0].description,
       windSpeed: response.data.wind.speed,
+      conditionId: response.data.weather[0].id
     };
+
+    try {
+      await saveWeatherData(city, weatherData);
+      console.log('Weather data saved to database');
+    } catch (err) {
+      console.error('Failed to save to DB:', err);
+    }
 
     // Check for severe weather (example: wind speed > 15 m/s)
     if (weatherData.windSpeed > 8) {
