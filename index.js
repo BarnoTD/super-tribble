@@ -1,9 +1,11 @@
-const express = require('express');
-const axios = require('axios');
-require('dotenv').config();
+const { connect, sendAlert } = require("./rabbitmq");
+const express = require("express");
+const axios = require("axios");
+require("dotenv").config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+connect();
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -13,13 +15,11 @@ app.use((req, res, next) => {
 // Middleware to parse JSON requests
 app.use(express.json());
 
-
-
-app.get('/weather', async (req, res) => {
+app.get("/weather", async (req, res) => {
   try {
     const { city } = req.query; // Get city from query parameters
     if (!city) {
-      return res.status(400).json({ error: 'City parameter is required' });
+      return res.status(400).json({ error: "City parameter is required" });
     }
 
     // Call OpenWeatherMap API
@@ -35,10 +35,19 @@ app.get('/weather', async (req, res) => {
       windSpeed: response.data.wind.speed,
     };
 
+    // Check for severe weather (example: wind speed > 15 m/s)
+    if (weatherData.windSpeed > 8) {
+      const alert = {
+        to: "+21694434003", // Replace with user's phone number (hardcoded for now)
+        message: `Severe weather alert in ${city}: High winds (${weatherData.windSpeed} m/s)!`,
+      };
+      sendAlert(alert); // Send to RabbitMQ
+    }
+
     res.json(weatherData);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch weather data' });
+    res.status(500).json({ error: "Failed to fetch weather data" });
   }
 });
 // Start the server
