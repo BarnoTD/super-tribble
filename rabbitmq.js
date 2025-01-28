@@ -4,7 +4,12 @@ let channel = null;
 
 // Connect to RabbitMQ and create a channel
 async function connect() {
-  const connection = await amqp.connect('amqp://localhost:5672');
+  
+  const connection = await amqp.connect({
+    protocol: 'amqp',
+    hostname: process.env.RABBITMQ_HOST || 'localhost',
+    port: process.env.RABBITMQ_PORT || 5672,
+  });
   channel = await connection.createChannel();
   await channel.assertQueue('weather-alerts'); // Create a queue named "weather-alerts"
   console.log('Connected to RabbitMQ');
