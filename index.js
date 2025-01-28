@@ -1,3 +1,4 @@
+const { getFromCache, setInCache } = require('./cache');
 const { saveWeatherData } = require('./db');
 const { connect, sendAlert } = require("./rabbitmq");
 const express = require("express");
@@ -9,6 +10,19 @@ const app = express();
 const port = process.env.PORT || 3000;
 connect();
 
+// Graceful shutdown
+process.on('SIGINT', () => {
+  client.quit();
+  console.log('Redis client disconnected');
+  process.exit();
+});
+
+process.on('SIGTERM', () => {
+  client.quit();
+  console.log('Redis client disconnected');
+  process.exit();
+});
+
 app.use(cors());
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -18,47 +32,44 @@ app.use((req, res, next) => {
 // Middleware to parse JSON requests
 app.use(express.json());
 
-app.get("/weather", async (req, res) => {
+app.get('/weather', async (req, res) => {
+  const { city } = req.query;
+
+  if (!city) {
+    return res.status(400).json({ error: 'City parameter is required' });
+  }
+
   try {
-    const { city } = req.query; // Get city from query parameters
-    if (!city) {
-      return res.status(400).json({ error: "City parameter is required" });
+    // Check cache first
+    const cachedData = await getFromCache(city);
+    if (cachedData) {
+      console.log('Serving from cache');
+      return res.json(cachedData);
     }
 
-    // Call OpenWeatherMap API
+    // Fetch from OpenWeatherMap API
     const response = await axios.get(
       `http://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${process.env.OPENWEATHER_API_KEY}&units=metric`
     );
 
-    // Extract relevant data
     const weatherData = {
       temperature: response.data.main.temp,
       humidity: response.data.main.humidity,
       description: response.data.weather[0].description,
       windSpeed: response.data.wind.speed,
-      conditionId: response.data.weather[0].id
+      conditionId: response.data.weather[0].id,
     };
 
-    try {
-      await saveWeatherData(city, weatherData);
-      console.log('Weather data saved to database');
-    } catch (err) {
-      console.error('Failed to save to DB:', err);
-    }
+    // Save to cache
+    await setInCache(city, weatherData);
 
-    // Check for severe weather (example: wind speed > 15 m/s)
-    if (weatherData.windSpeed > 8) {
-      const alert = {
-        to: "+21694434003", // Replace with user's phone number (hardcoded for now)
-        message: `Severe weather alert in ${city}: High winds (${weatherData.windSpeed} m/s)!`,
-      };
-      sendAlert(alert); // Send to RabbitMQ
-    }
+    // Save to database
+    await saveWeatherData(city, weatherData);
 
     res.json(weatherData);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Failed to fetch weather data" });
+    res.status(500).json({ error: 'Failed to fetch weather data' });
   }
 });
 // Start the server
